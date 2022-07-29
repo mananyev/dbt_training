@@ -2,20 +2,29 @@ version: 2
 
 models:
   - name: stg_payments
+    description: One unique payment per row, non-unique order id.
     columns:
       - name: payment_id
+        description: Primary key for payments.
         tests:
           - unique
           - not_null
       - name: payment_status
+        description: '{{ doc("payment_status") }}'
         tests:
           - accepted_values:
               values:
                 - success
                 - fail
       - name: order_id
+        description: Foreign key to stg_orders.order_id.
         tests:
           - relationships:
               to: ref('stg_orders')
               field: order_id
-              
+      - name: payment_method
+        description: '{{ doc("payment_method") }}'
+      - name: amount
+        description: Amount in USD.
+      - name: created_at
+        description: Date of the payment.
