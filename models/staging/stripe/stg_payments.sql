@@ -8,7 +8,7 @@ with payment as (
         status as payment_status,
 
         -- convert amount to dollars
-        amount / 100 as amount,
+        {{ cents_to_dollars('amount') }} as amount,
         created as created_at
 
     from {{ source('stripe', 'payment') }}
