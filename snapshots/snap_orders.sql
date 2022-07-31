@@ -1,8 +1,10 @@
+{% set database=target.dbname %}
+
 {% snapshot orders_snapshot %}
 
 {{
     config(
-      target_database='dbtworkshop',
+      target_database=database,
       target_schema='snapshots',
       unique_key='id',
 
