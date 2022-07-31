@@ -12,7 +12,7 @@ paid_orders as (
         c.first_name as customer_first_name,
         c.last_name as customer_last_name
 
-    from jaffle_shop.orders as orders
+    from {{ source('jaffle_shop', 'orders') }} as orders
 
     left join (
 
@@ -21,7 +21,7 @@ paid_orders as (
             max(created) as payment_finalized_date,
             sum(amount) / 100.0 as total_amount_paid
 
-        from stripe.payment
+        from {{ source('stripe', 'payement') }}
 
         where status <> 'fail'
 
@@ -29,7 +29,7 @@ paid_orders as (
 
     ) p on orders.id = p.order_id
     
-    left join jaffle_shop.customers c on orders.user_id = c.id
+    left join {{ source('jaffle_shop', 'customers') }} c on orders.user_id = c.id
 
 ),
 
@@ -42,9 +42,9 @@ customer_orders as (
         , max(order_date) as most_recent_order_date
         , count(orders.id) as number_of_orders
     
-    from jaffle_shop.customers c 
+    from {{ source('jaffle_shop', 'customers') }} c 
 
-    left join jaffle_shop.orders as orders
+    left join {{ source('jaffle_shop', 'orders') }} as orders
         on orders.user_id = c.id 
 
     group by 1
@@ -70,7 +70,7 @@ from paid_orders p
 left join customer_orders as c using (customer_id)
 
 left outer join (
-    
+
     select
         p.order_id,
         sum(t2.total_amount_paid) as clv_bad
