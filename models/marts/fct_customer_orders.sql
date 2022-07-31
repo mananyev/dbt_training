@@ -1,106 +1,48 @@
-with 
+with paid_orders as (select orders.id as order_id,
+    orders.user_id	as customer_id,
+    orders.order_date as order_placed_at,
+        orders.status as order_status,
+    p.total_amount_paid,
+    p.payment_finalized_date,
+    c.first_name    as customer_first_name,
+        c.last_name as customer_last_name
+from jaffle_shop.orders as orders
+left join (select orderid as order_id, max(created) as payment_finalized_date, sum(amount) / 100.0 as total_amount_paid
+        from stripe.payment
+        where status <> 'fail'
+        group by 1) p on orders.id = p.order_id
+left join jaffle_shop.customers c on orders.user_id = c.id ),
 
-orders as (
+customer_orders 
+as (select c.id as customer_id
+    , min(order_date) as first_order_date
+    , max(order_date) as most_recent_order_date
+    , count(orders.id) as number_of_orders
+from jaffle_shop.customers c 
+left join jaffle_shop.orders as orders
+on orders.user_id = c.id 
+group by 1)
 
-  select * from {{ ref('int_orders') }}
-
-),
-
-
-customers as (
-
-  select * from {{ ref('stg_jaffle_shop__customers') }}
-
-),
-
-
-aggregations as (
-    select
-    customer_id,
-
-    --- Customer level aggregations
-    min(order_date) as customer_first_order_date,
-
-    min(valid_order_date) as customer_first_non_returned_order_date,
-
-    max(valid_order_date) as customer_most_recent_non_returned_order_date,
-
-    count(*) as customer_order_count,
-
-    sum(nvl2(
-        valid_order_date,
-        1,
-        0)
-    ) as customer_non_returned_order_count,
-
-    sum(nvl2(
-        valid_order_date,
-        order_value_dollars,
-        0)
-    ) as customer_total_lifetime_value,
-
-    listagg(distinct order_id) as customer_order_ids
-
-    from orders
-
+select
+p.*,
+row_number() over (order by p.order_id) as transaction_seq,
+row_number() over (partition by customer_id order by p.order_id) as customer_sales_seq,
+case when c.first_order_date = p.order_placed_at
+then 'new'
+else 'return' end as nvsr,
+x.clv_bad as customer_lifetime_value,
+c.first_order_date as fdos
+from paid_orders p
+left join customer_orders as c using (customer_id)
+left outer join 
+(
+        select
+        p.order_id,
+        sum(t2.total_amount_paid) as clv_bad
+    from paid_orders p
+    left join paid_orders t2 on p.customer_id = t2.customer_id and p.order_id >= t2.order_id
     group by 1
-),
+    order by p.order_id
+) x on x.order_id = p.order_id
+order by order_id
 
-
-customer_orders as (
-
-  select 
-
-    orders.*,
-    customers.full_name,
-    customers.surname,
-    customers.givenname,
-    a.customer_first_order_date,
-    a.customer_first_non_returned_order_date,
-    a.customer_most_recent_non_returned_order_date,
-    a.customer_order_count,
-    a.customer_non_returned_order_count,
-    a.customer_total_lifetime_value,
-    a.customer_order_ids
-
-  from orders
-
-  inner join customers using (customer_id)
-
-  left join aggregations a using (customer_id)
-
-),
-
-
-add_avg_order_values as (
-
-  select
-    *,
-    customer_total_lifetime_value / customer_non_returned_order_count 
-        as customer_avg_non_returned_order_value
-
-  from customer_orders
-
-),
-
-
-final as (
-
-  select 
-
-    order_id,
-    customer_id,
-    surname,
-    givenname,
-    customer_first_order_date as first_order_date,
-    customer_order_count as order_count,
-    customer_total_lifetime_value as total_lifetime_value,
-    order_value_dollars,
-    order_status,
-    payment_status
-
-  from add_avg_order_values
-
-)
-
-select * from final
